@@ -95,7 +95,7 @@ public:
     template<typename tcomponent, typename ...targs> void AddComponent(entity Entity, targs&& ...Args);
     template<typename tcomponent> void RemoveComponent(entity Entity);
     template<typename tcomponent> b32 HasComponent(entity Entity);
-    template<typename tcomponent> tcomponent& GetComponent(entity Entity);
+    template<typename tcomponent> tcomponent GetComponent(entity Entity);
 
     template<typename tsystem, typename ...targs> void AddSystem(targs&& ...Args);
     template<typename tsystem> void RemoveSystem();
