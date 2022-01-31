@@ -105,40 +105,19 @@ void DrawLine(texture_t* Texture, v2 Min, v2 Max, u32 Color)
     }
 }
 
-v4 Unpack4x8ColorRGBA(u32 Color)
+internal u32
+GetTexel(texture_t* Texture, u32 X, u32 Y)
 {
-    v4 Result = V4i((Color >> 0) & 0xFF, (Color >> 8) & 0xFF, (Color >> 16) & 0xFF, (Color >> 24) & 0xFF);
+    u32 TexturePitch = Texture->Width * sizeof(u32);
+    u32 Result = *(u32*)((u8*)Texture->Memory + (u32)Y*TexturePitch + (u32)X*sizeof(u32));
     return Result;
 }
 
-v4 Unpack4x8ColorARGB(u32 Color)
+internal v4 
+SRGBTexel(u32 TexelSample)
 {
-    v4 Result = V4i((Color >> 16) & 0xFF, (Color >> 8) & 0xFF, (Color >> 0) & 0xFF, (Color >> 24) & 0xFF);
-    return Result;
-}
-
-
-v4 SRGBTo1Linear(v4 A)
-{
-    v4 Result = {};
-
-    Result.x = Square(A.x / 255.0f);
-    Result.y = Square(A.y / 255.0f);
-    Result.z = Square(A.z / 255.0f);
-    Result.w = A.w / 255.0f;
-
-    return Result;
-}
-
-v4 LinearTo255SRGB(v4 A)
-{
-    v4 Result = {};
-
-    Result.x = sqrtf(A.x) * 255.0f;
-    Result.y = sqrtf(A.y) * 255.0f;
-    Result.z = sqrtf(A.z) * 255.0f;
-    Result.w = A.w * 255.0f;
-
+    v4 Texel = UnpackRGBA(TexelSample);
+    v4 Result = SRGBTo1Linear(Texel);
     return Result;
 }
 
@@ -150,10 +129,12 @@ DrawRotRect(texture_t* RenderBuffer, v2 Origin, v2 XAxis, v2 YAxis, u32 color, t
     i32 MaxX = 0;
     i32 MaxY = 0;
 
-    v4 UnpackedColor = Unpack4x8ColorARGB(color);
-    UnpackedColor.xyz *= UnpackedColor.w;
+    v4 ColorUnpacked = UnpackBGRA(color);
+    ColorUnpacked = ColorUnpacked / 255.0f;
+    ColorUnpacked.rgb *= ColorUnpacked.a;
 
-#if 0
+#if 1
+    v2 CenterPoint = V2(0, 0);
     v2 Ps[] = {Origin, Origin + XAxis, Origin + XAxis + YAxis, Origin + YAxis};
 #else
     v2 CenterPoint = V2(XAxis.x/2, YAxis.y/2);
@@ -188,7 +169,8 @@ DrawRotRect(texture_t* RenderBuffer, v2 Origin, v2 XAxis, v2 YAxis, u32 color, t
     v2 nYAxis = {-XAxis.y/Det,  XAxis.x/Det};
 
     u32 Pitch = RenderBuffer->Width * sizeof(u32);
-    u8* Row = ((u8*)RenderBuffer->Memory + MinX*sizeof(u32) + MinY*Pitch);
+    u8* ShiftedMemory = (u8*)RenderBuffer->Memory;// + Texture->ShiftX + Texture->ShiftY;
+    u8* Row = (ShiftedMemory + MinX*sizeof(u32) + MinY*Pitch);
     for(i32 Y = MinY; Y < MaxY; ++Y)
     {
         u32* Pixel = (u32*)Row;
@@ -230,35 +212,30 @@ DrawRotRect(texture_t* RenderBuffer, v2 Origin, v2 XAxis, v2 YAxis, u32 color, t
                     i32 FetchX = (i32)tX;
                     i32 FetchY = (i32)tY;
 
-#if 0
                     // This is for a interpolation of texels
                     r32 fX = tX - (r32)FetchX;
                     r32 fY = tY - (r32)FetchY;
-#endif
 
-                    u32 ColorFromMemory = *(u32*)((u8*)Texture->Memory + (u32)FetchY*TexturePitch + (u32)FetchX*sizeof(u32));
-
-                    v4 SrcTexel = Unpack4x8ColorARGB(ColorFromMemory);
-                    SrcTexel = SRGBTo1Linear(SrcTexel);
+                    u32 TexelSample = GetTexel(Texture, FetchX, FetchY);
+                    v4 Texel = SRGBTexel(TexelSample);
 
 #if 1
-                    SrcTexel = Hadamard(SrcTexel, UnpackedColor);
-                    SrcTexel.x = Clamp01(SrcTexel.x);
-                    SrcTexel.y = Clamp01(SrcTexel.y);
-                    SrcTexel.z = Clamp01(SrcTexel.z);
+                    Texel = Hadamard(Texel, ColorUnpacked);
+                    Texel.x = Clamp01(Texel.r);
+                    Texel.y = Clamp01(Texel.g);
+                    Texel.z = Clamp01(Texel.b);
 
-                    v4 DstPixel = Unpack4x8ColorARGB(*Pixel);
-                    DstPixel = SRGBTo1Linear(DstPixel);
+                    v4 Dst = UnpackBGRA(*Pixel);
+                    Dst = SRGBTo1Linear(Dst);
 
-                    SrcTexel = (1.0f - (SrcTexel.w / 255.0f))*DstPixel + SrcTexel;
+                    v4 Blended = (1.0f - (Texel.a))*Dst + Texel.a*Texel;
+#else
+                    Blended = SRGBTo1Linear(Blended);
 #endif
-                    SrcTexel = LinearTo255SRGB(SrcTexel);
 
-                    u32 PreNewColor = (((u32)(SrcTexel.w) << 24) | 
-                                       ((u32)(SrcTexel.z) <<  0) | 
-                                       ((u32)(SrcTexel.y) <<  8) | 
-                                       ((u32)(SrcTexel.x) << 16));
-                    color = PreNewColor;
+                    Blended = LinearTo255SRGB(Blended);
+
+                    color = PackBGRA(Blended);
                 }
                 *Pixel = color;
             }

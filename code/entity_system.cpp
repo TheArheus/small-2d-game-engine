@@ -126,7 +126,7 @@ HasComponent(entity Entity)
 }
 
 template<typename tcomponent> 
-tcomponent& registry::
+tcomponent registry::
 GetComponent(entity Entity)
 {
     const i32 EntityID = Entity.EntityID;

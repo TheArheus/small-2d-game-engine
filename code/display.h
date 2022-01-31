@@ -3,15 +3,6 @@
 #include <math.h>
 #include <stdbool.h>
 #include <SDL2\SDL.h>
-#include <algorithm>
-#include <memory>
-#include <string>
-#include <vector>
-#include <bitset>
-#include <unordered_map>
-#include <set>
-#include <typeindex>
-#include <typeinfo>
 #include "intrinsics.h"
 
 struct texture_t
@@ -29,6 +20,7 @@ extern texture_t*       ColorBuffer;
 #include "hmath.h"
 #include "components.h"
 #include "entity_system.h"
+#include "asset_store.h"
 
 bool InitWindow();
 void RenderColorBuffer();

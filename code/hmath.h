@@ -17,6 +17,10 @@ union v3
     };
     struct
     {
+        r32 r, g, b;        
+    };
+    struct
+    {
         v2 xy;
         r32 _Ign0;
     };
@@ -34,13 +38,25 @@ union v4
     {
         r32 x, y, z, w;
     };
+    struct
+    {
+        r32 r, g, b, a;
+    };
     union
     {
         struct
         {
             v3 xyz;
         };
-        r32 Ign2;
+        r32 _Ign2;
+    };
+    union
+    {
+        struct
+        {
+            v3 rgb;
+        };
+        r32 _Ign3;
     };
     r32 E[4];
 };
@@ -1481,5 +1497,110 @@ operator*(mNxM A, mNxM B)
 
     return Result;
 }
+
+internal v4
+UnpackRGBA(u32 Color)
+{
+    v4 Result = V4((Color >>  0) & 0xFF,
+                   (Color >>  8) & 0xFF,
+                   (Color >> 16) & 0xFF,
+                   (Color >> 24) & 0xFF);
+    return Result;
+}
+
+internal v4
+UnpackBGRA(u32 Color)
+{
+    v4 Result = V4((Color >> 16) & 0xFF,
+                   (Color >>  8) & 0xFF,
+                   (Color >>  0) & 0xFF,
+                   (Color >> 24) & 0xFF);
+    return Result;
+}
+
+// NOTE: In this project I need only this one
+internal u32 
+PackBGRA(v4 Color)
+{
+    u32 Result = ((((u32)roundf(Color.a)) << 24) | 
+                  (((u32)roundf(Color.r)) << 16) |
+                  (((u32)roundf(Color.g)) <<  8) |
+                  (((u32)roundf(Color.b)) <<  0));
+    return Result;
+}
+
+internal u32 
+PackRGBA(v4 Color)
+{
+    u32 Result = ((((u32)roundf(Color.a)) << 24) | 
+                  (((u32)roundf(Color.b)) << 16) |
+                  (((u32)roundf(Color.g)) <<  8) |
+                  (((u32)roundf(Color.r)) <<  0));
+    return Result;
+}
+
+internal v4 
+SRGBTo1Linear(v4 A)
+{
+    v4 Result = {};
+
+    Result.r = Square(A.r / 255.0f);
+    Result.g = Square(A.g / 255.0f);
+    Result.b = Square(A.b / 255.0f);
+    Result.a = A.a / 255.0f;
+
+    return Result;
+}
+
+internal v4 
+LinearTo255SRGB(v4 A)
+{
+    v4 Result = {};
+
+    Result.r = sqrtf(A.r) * 255.0f;
+    Result.g = sqrtf(A.g) * 255.0f;
+    Result.b = sqrtf(A.b) * 255.0f;
+    Result.a = A.a * 255.0f;
+
+    return Result;
+}
+
+#if 0
+internal void 
+FromRGBAToARGB(texture_t* Texture)
+{
+    for(u32 Height = 0;
+        Height < Texture->Height;
+        ++Height)
+    {
+        for(u32 Width = 0;
+            Width < Texture->Width;
+            ++Width)
+        {
+            u32 ColorToConvert = Texture->Memory[sizeof(u32) * Height + Width];
+            u32 NewColor = PackARGB(UnpackRGBA(ColorToConvert));
+            Texture->Memory[sizeof(u32) * Height + Width] = NewColor;
+        }
+    }
+}
+
+internal void 
+FromARGBToRGBA(texture_t* Texture)
+{
+    for(u32 Height = 0;
+        Height < Texture->Height;
+        ++Height)
+    {
+        for(u32 Width = 0;
+            Width < Texture->Width;
+            ++Width)
+        {
+            u32 ColorToConvert = Texture->Memory[sizeof(u32)*Height + Width];
+            u32 NewColor = PackRGBA(UnpackARGB(ColorToConvert));
+            Texture->Memory[sizeof(u32) * Height + Width] = NewColor;
+        }
+    }
+}
+#endif
 
 #endif
