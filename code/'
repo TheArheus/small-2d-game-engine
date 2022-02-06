@@ -1,0 +1,305 @@
+#ifndef SYSTEMS_H_
+
+class movement_system : public entity_system
+{
+public:
+    movement_system()
+    {
+        RequireComponent<transformation_compontent>();
+        RequireComponent<body_component>();
+    }
+
+    void Update(r32 DeltaTime)
+    {
+        for(entity& Entity : Entities)
+        {
+            transformation_compontent& Transform = Entity.Registry->GetComponent<transformation_compontent>(Entity);
+            body_component& Movement = Entity.Registry->GetComponent<body_component>(Entity);
+
+            Transform.Position += V3(Movement.Velocity * DeltaTime, 0.0f);
+        }
+    }
+};
+
+internal texture_t
+GetShiftedTexture(texture_t* Texture, v2 Shift, v2 NewDim)
+{
+    texture_t NewTexture;
+    NewTexture.Width  = NewDim.x;
+    NewTexture.Height = NewDim.y;
+    NewTexture.Memory = (u32*)calloc(sizeof(u32), NewDim.x * NewDim.y);
+
+    u32 ShiftX = Shift.x;
+    u32 ShiftY = Shift.y;
+
+    u32 Pitch    = Texture->Width * sizeof(u32);
+    u32 NewPitch = NewTexture.Width * sizeof(u32);
+
+    u8* InRow  = ((u8*)Texture->Memory + ShiftX*sizeof(u32) + ShiftY*Pitch);
+    u8* OutRow = (u8*)NewTexture.Memory;
+    for(u32 Y = 0;
+        Y < NewDim.y;
+        ++Y)
+    {
+        u32* InPixel  = (u32*)InRow;
+        u32* OutPixel = (u32*)OutRow;
+        
+        for(u32 X = 0;
+            X < NewDim.x;
+            ++X)
+        {
+            *OutPixel++ = *InPixel++;
+        }
+
+        InRow  += Pitch;
+        OutRow += NewPitch;
+        
+    }
+
+    return NewTexture;
+}
+
+struct sortable_entities
+{
+    transformation_compontent Transform;
+    sprite_component Sprite;
+};
+
+class rendering_system : public entity_system
+{
+public:
+    rendering_system()
+    {
+        RequireComponent<transformation_compontent>();
+        RequireComponent<sprite_component>();
+    }
+
+    void Render(std::unique_ptr<asset_store>& AssetStore, camera* Camera)
+    {
+        std::vector<sortable_entities> SortedEntities;
+        for(entity Entity: Entities)
+        {
+            sortable_entities SortableEntity;
+
+            SortableEntity.Transform = Entity.Registry->GetComponent<transformation_compontent>(Entity);
+            SortableEntity.Sprite = Entity.Registry->GetComponent<sprite_component>(Entity);
+
+            SortedEntities.emplace_back(SortableEntity);
+        }
+
+        std::sort(SortedEntities.begin(), SortedEntities.end(), [](const sortable_entities& A, const sortable_entities& B){ return A.Transform.Position.z < B.Transform.Position.z; });
+
+        for(sortable_entities Entity : SortedEntities)
+        {
+            transformation_compontent Transform = Entity.Transform;
+            sprite_component Sprite = Entity.Sprite;
+            texture_t Texture = *AssetStore->GetTexture(Sprite.AssetID);
+            texture_t SlicedTexture;
+
+            SlicedTexture = GetShiftedTexture(&Texture, Sprite.SpritePos, Sprite.Dims);
+
+            v2 DrawPoint     = Transform.Position.xy - (!Sprite.IsFixed)*Camera->P;
+            v2 TextureWidth  = rotate(Transform.Scale*Sprite.Dims.x*V2(1, 0), Transform.Rotation);
+            v2 TextureHeight = rotate(Transform.Scale*Sprite.Dims.y*V2(0, 1), Transform.Rotation);
+            //if(IsInRectangle(Camera->Area, DrawPoint))
+            {
+                DrawRotRect(ColorBuffer, DrawPoint, TextureWidth, TextureHeight, 0xFFFFFFFF, &SlicedTexture);
+            }
+        }
+    }
+};
+
+class animation_system : public entity_system
+{
+public:
+    animation_system()
+    {
+        RequireComponent<animation_component>();
+        RequireComponent<sprite_component>();
+    }
+
+    void Animate()
+    {
+        for(entity Entity : Entities)
+        {
+            animation_component& Animation = Entity.Registry->GetComponent<animation_component>(Entity);
+            sprite_component& Sprite = Entity.Registry->GetComponent<sprite_component>(Entity);
+
+            Animation.CurrentFrame = ((SDL_GetTicks() - Animation.StartTime) * Animation.FrameRateSpeed / 1000) % Animation.FramesCount;
+
+            Sprite.SpritePos.x = Animation.CurrentFrame * Sprite.Dims.x;
+        }
+    }
+};
+
+class collision_system : public entity_system
+{
+public:
+    collision_system()
+    {
+        RequireComponent<collision_box_component>();
+        RequireComponent<transformation_compontent>();
+    }
+
+    void Update(std::unique_ptr<event_bus>& EventBus)
+    {
+        for(entity A : Entities)
+        {
+            for(entity B : Entities)
+            {
+                if(A.EntityID != B.EntityID)
+                {
+                    collision_box_component CollisionA = A.Registry->GetComponent<collision_box_component>(A);
+                    transformation_compontent TransformA = A.Registry->GetComponent<transformation_compontent>(A);
+
+                    collision_box_component CollisionB = B.Registry->GetComponent<collision_box_component>(B);
+                    transformation_compontent TransformB = B.Registry->GetComponent<transformation_compontent>(B);
+
+                    b32 AreCollided = ((TransformB.Position.x < (TransformA.Position.x + CollisionA.Dims.x + CollisionA.Offset.x)) && 
+                                       (TransformB.Position.y < (TransformA.Position.y + CollisionA.Dims.y + CollisionA.Offset.y)) &&
+                                       ((TransformB.Position.x + CollisionB.Dims.x + CollisionB.Offset.x) > TransformA.Position.x) &&
+                                       ((TransformB.Position.y + CollisionB.Dims.y + CollisionB.Offset.y) > TransformA.Position.x));
+
+                    if(AreCollided)
+                    {
+                        MessageLog("Entities " + std::to_string(A.EntityID) + " and " + std::to_string(B.EntityID) + " are collided");
+
+                        EventBus->EmitEvent<collision_event>(A, B);
+                    }
+                }
+            }
+        }
+    }
+};
+
+class keyboard_control_system : public entity_system
+{
+public:
+    keyboard_control_system()
+    {
+        RequireComponent<keyboard_control_component>();
+        RequireComponent<sprite_component>();
+        RequireComponent<body_component>();
+    }
+
+    void SubscribeToEvent(std::unique_ptr<event_bus>& EventBus)
+    {
+        EventBus->SubscribeToEvent<key_pressed_event>(this, &keyboard_control_system::OnKeyPressed);
+    }
+
+    void OnKeyPressed(key_pressed_event& Event)
+    {
+        for(entity& Entity : Entities)
+        {
+            keyboard_control_component Control = Entity.Registry->GetComponent<keyboard_control_component>(Entity);
+            sprite_component& Sprite = Entity.Registry->GetComponent<sprite_component>(Entity);
+            body_component& Body = Entity.Registry->GetComponent<body_component>(Entity);
+
+            switch(Event.Symbol)
+            {
+                case SDLK_UP:
+                case SDLK_w:
+                {
+                    Body.Velocity = Control.dP_Up;
+                    Sprite.SpritePos.y = Sprite.Dims.y * 0;
+                } break;
+
+                case SDLK_RIGHT:
+                case SDLK_d:
+                {
+                    Body.Velocity = Control.dP_Right;
+                    Sprite.SpritePos.y = Sprite.Dims.y * 1;
+                } break;
+
+                case SDLK_DOWN:
+                case SDLK_s:
+                {
+                    Body.Velocity = Control.dP_Down;
+                    Sprite.SpritePos.y = Sprite.Dims.y * 2;
+                } break;
+
+                case SDLK_LEFT:
+                case SDLK_a:
+                {
+                    Body.Velocity = Control.dP_Left;
+                    Sprite.SpritePos.y = Sprite.Dims.y * 3;
+                } break;
+            }
+        }
+    }
+};
+
+
+class camera_system : public entity_system
+{
+public:
+    camera_system()
+    {
+        RequireComponent<camera_component>();
+        RequireComponent<transformation_compontent>();
+    }
+
+    void Update(camera* Camera, i32 MapWidth, i32 MapHeight)
+    {
+        for(entity Entity : Entities)
+        {
+            transformation_compontent Transform = Entity.Registry->GetComponent<transformation_compontent>(Entity);
+
+            if(Transform.Position.x + GetDim(Camera->Area).x / 2 < MapWidth)
+            {
+                Camera->P.x = Transform.Position.x - ColorBuffer->Width / 2;
+            }
+
+            if(Transform.Position.y + GetDim(Camera->Area).y / 2 < MapHeight)
+            {
+                Camera->P.y = Transform.Position.y - ColorBuffer->Height / 2;
+            }
+
+            Camera->P.x = Camera->P.x < 0 ? 0 : Camera->P.x;
+            Camera->P.y = Camera->P.y < 0 ? 0 : Camera->P.y;
+            Camera->P.x = (Camera->P.x + GetDim(Camera->Area).x > MapWidth)  ? MapWidth  - GetDim(Camera->Area).x : Camera->P.x;
+            Camera->P.y = (Camera->P.y + GetDim(Camera->Area).y > MapHeight) ? MapHeight - GetDim(Camera->Area).y : Camera->P.y;
+        }
+    }
+};
+
+class projectile_emit_system : public entity_system
+{
+public:
+    projectile_emit_system()
+    {
+        RequireComponent<projectile_emitter_component>();
+        RequireComponent<transformation_compontent>();
+        RequireComponent<sprite_component>();
+    }
+
+    void Update(std::unique_ptr<registry>& Registry)
+    {
+        for(entity Entity : Entities)
+        {
+            projectile_emitter_component& Projectile = Entity.Registry->GetComponent<projectile_emitter_component>(Entity);
+            transformation_compontent Transform = Entity.Registry->GetComponent<transformation_compontent>(Entity);
+
+            if((SDL_GetTicks() - Projectile.LastEmissionTime) > Projectile.RepeatFrequency)
+            {
+                v2 ProjectilePos = Transform.Position.xy;
+                if(Registry->HasComponent<sprite_component>(Entity))
+                {
+                    sprite_component Sprite = Entity.Registry->GetComponent<sprite_component>(Entity);
+                    ProjectilePos += (Transform.Scale * Sprite.Dims / 2);
+                }
+
+                entity NewProjectileEntity = Registry->CreateEntity();
+                Registry->AddComponent<transformation_compontent>(NewProjectileEntity, V3(Transform.Position.xy, 4.0f), V2(1, 1), 0);
+                Registry->AddComponent<body_component>(NewProjectileEntity, Projectile.Velocity);
+                Registry->AddComponent<collision_box_component>(NewProjectileEntity, V2(4, 4));
+                Registry->AddComponent<sprite_component>(NewProjectileEntity, "bullet_image", 4, 4);
+
+                Projectile.LastEmissionTime = SDL_GetTicks();
+            }
+        }
+    }
+};
+
+#define SYSTEMS_H_
+#endif

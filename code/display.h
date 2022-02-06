@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <SDL2\SDL.h>
 #include "intrinsics.h"
+#include "hmath.h"
 
 struct texture_t
 {
@@ -12,15 +13,22 @@ struct texture_t
     u32* Memory;
 };
 
+struct camera
+{
+    rectangle2 Area;
+    v2 P;
+    r32 Scale;
+};
+
 extern SDL_Window*      window;
 extern SDL_Renderer*    renderer;
 extern SDL_Texture*     texture;
 extern texture_t*       ColorBuffer;
 
-#include "hmath.h"
-#include "components.h"
 #include "entity_system.h"
+#include "components.h"
 #include "asset_store.h"
+#include "events.h"
 
 bool InitWindow();
 void RenderColorBuffer();
@@ -35,7 +43,6 @@ void DrawFilledCircle(v2 P, u32 Width, u32 Height, r32 R, u32 Color);
 void DrawPolygon(v2 P, std::vector<v2> Vertices, u32 Color);
 void DestroyWindow();
 
-#include "systems.h"
 
 #define DISPLAY_H_
 #endif

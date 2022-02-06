@@ -30,15 +30,25 @@ entity registry::
 CreateEntity()
 {
     entity NewEntity;
+    i32 NewEntityID;
 
-    NewEntity.EntityID = EntityCount++;
+    if(FreedIDs.empty())
+    {
+        NewEntityID = EntityCount++;
+        if(NewEntityID >= EntityComponentSignature.size())
+        {
+            EntityComponentSignature.resize(NewEntityID + 1);
+        }
+    }
+    else
+    {
+        NewEntityID = FreedIDs.front();
+        FreedIDs.pop_front();
+    }
+
+    NewEntity.EntityID = NewEntityID;
     NewEntity.Registry = this;
     HotEntities.insert(NewEntity);
-
-    if(NewEntity.EntityID >= EntityComponentSignature.size())
-    {
-        EntityComponentSignature.resize(NewEntity.EntityID + 1);
-    }
 
     MessageLog("Entity created with ID = " + std::to_string(NewEntity.EntityID));
 
@@ -64,6 +74,21 @@ AddEntityToSystems(entity Entity)
 }
 
 void registry::
+RemoveEntityFromSystems(entity Entity)
+{
+    for(auto& System : Systems)
+    {
+        System.second->RemoveEntity(Entity);
+    }
+}
+
+void registry::
+KillEntity(entity Entity)
+{
+    ColdEntities.insert(Entity);
+}
+
+void registry::
 Update()
 {
     for(entity Entity : HotEntities)
@@ -72,6 +97,15 @@ Update()
     }
 
     HotEntities.clear();
+
+    for(entity Entity : ColdEntities)
+    {
+        RemoveEntityFromSystems(Entity);
+        EntityComponentSignature[Entity.EntityID].reset();
+        FreedIDs.push_back(Entity.EntityID);
+    }
+
+    ColdEntities.clear();
 }
 
 template<typename tcomponent, typename ...targs> 
@@ -126,16 +160,15 @@ HasComponent(entity Entity)
 }
 
 template<typename tcomponent> 
-tcomponent registry::
+tcomponent& registry::
 GetComponent(entity Entity)
 {
     const i32 EntityID = Entity.EntityID;
     const i32 ComponentID = component<tcomponent>::GetID();
 
     std::shared_ptr<pool<tcomponent>> ComponentPool = std::static_pointer_cast<pool<tcomponent>>(ComponentsPool[ComponentID]);
-    tcomponent Result = ComponentPool->Data[EntityID];
 
-    return Result;
+    return static_cast<tcomponent&>(ComponentPool->Data[EntityID]);
 }
 
 template<typename tsystem, typename ...targs> 
