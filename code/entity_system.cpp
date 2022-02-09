@@ -86,6 +86,7 @@ void registry::
 KillEntity(entity Entity)
 {
     ColdEntities.insert(Entity);
+    MessageLog("Entity #" + std::to_string(Entity.EntityID) + " was killed");
 }
 
 void registry::
@@ -102,10 +103,97 @@ Update()
     {
         RemoveEntityFromSystems(Entity);
         EntityComponentSignature[Entity.EntityID].reset();
+
+        for(auto Pool : ComponentsPool)
+        {
+            if(Pool) Pool->RemoveEntityFromPool(Entity.EntityID);
+        }
+
         FreedIDs.push_back(Entity.EntityID);
+
+        RemoveEntityTag(Entity);
+        RemoveEntityGroup(Entity);
     }
 
     ColdEntities.clear();
+}
+
+void registry::
+TagEntity(entity Entity, const std::string& Tag)
+{
+    EntityPerTag.emplace(Tag, Entity);
+    TagPerEntity.emplace(Entity.EntityID, Tag);
+}
+
+b32 registry:: 
+EntityHasTag(entity Entity, const std::string& Tag) const
+{
+    b32 Result = (TagPerEntity.find(Entity.EntityID) != TagPerEntity.end()) && 
+                 (EntityPerTag.find(Tag)->second == Entity);
+
+    return Result;
+}
+
+entity registry:: 
+GetEntityByTag(const std::string& Tag) const
+{
+    return EntityPerTag.at(Tag);
+}
+
+void registry:: 
+RemoveEntityTag(entity Entity)
+{
+    auto TaggedEntity = TagPerEntity.find(Entity.EntityID);
+    if(TaggedEntity != TagPerEntity.end())
+    {
+        auto Tag = TaggedEntity->second;
+        EntityPerTag.erase(Tag);
+        TagPerEntity.erase(TaggedEntity);
+    }
+}
+
+void registry:: 
+GroupEntity(entity Entity, const std::string& Group)
+{
+    EntitiesPerGroup.emplace(Group, std::set<entity>());
+    EntitiesPerGroup[Group].emplace(Entity);
+    GroupPerEntity.emplace(Entity.EntityID, Group);
+}
+
+b32 registry:: 
+EntityBelongsToGroup(entity Entity, const std::string& Group) const
+{
+    if(EntitiesPerGroup.find(Group) == EntitiesPerGroup.end()) return false;
+
+    std::set<entity> GroupEntities = EntitiesPerGroup.at(Group);
+    return GroupEntities.find(Entity) != GroupEntities.end();
+}
+
+std::vector<entity> registry:: 
+GetEntitiesByGroup(const std::string& Group) const
+{
+    auto& SetOfEntities = EntitiesPerGroup.at(Group);
+    return std::vector<entity>(SetOfEntities.begin(), SetOfEntities.end());
+}
+
+void registry:: 
+RemoveEntityGroup(entity Entity)
+{
+    auto GroupedEntity = GroupPerEntity.find(Entity.EntityID);
+    if(GroupedEntity != GroupPerEntity.end())
+    {
+        auto Group = EntitiesPerGroup.find(GroupedEntity->second);
+        if(Group != EntitiesPerGroup.end())
+        {
+            auto EntityInGroup = Group->second.find(Entity);
+            if(EntityInGroup != Group->second.end())
+            {
+                Group->second.erase(EntityInGroup);
+            }
+        }
+
+        GroupPerEntity.erase(GroupedEntity);
+    }
 }
 
 template<typename tcomponent, typename ...targs> 
@@ -127,15 +215,13 @@ AddComponent(entity Entity, targs&& ...Args)
     }
 
     std::shared_ptr<pool<tcomponent>> ExistComponentPool = std::static_pointer_cast<pool<tcomponent>>(ComponentsPool[ComponentID]);
-    if(EntityID >= ExistComponentPool->Data.size())
-    {
-        ExistComponentPool->Data.resize(EntityCount);
-    }
 
     tcomponent NewComponent(std::forward<targs>(Args)...);
 
-    ExistComponentPool->Data[EntityID] = NewComponent;
+    ExistComponentPool->Set(NewComponent, EntityID);
     EntityComponentSignature[EntityID].set(ComponentID);
+
+    //MessageLog("Component ID = " + std::to_string(ComponentID) + " --> POOL SIZE: " + std::to_string(ExistComponentPool->Size));
 }
 
 template<typename tcomponent>
@@ -145,6 +231,9 @@ RemoveComponent(entity Entity)
     const i32 ComponentID = component<tcomponent>::GetID();
     const i32 EntityID = Entity.EntityID;
 
+    std::shared_ptr<pool<tcomponent>> ExistComponentPool = std::static_pointer_cast<pool<tcomponent>>(ComponentsPool[ComponentID]);
+
+    ExistComponentPool->Remove(EntityID);
     EntityComponentSignature[EntityID].set(ComponentID, false);
 }
 
@@ -168,7 +257,7 @@ GetComponent(entity Entity)
 
     std::shared_ptr<pool<tcomponent>> ComponentPool = std::static_pointer_cast<pool<tcomponent>>(ComponentsPool[ComponentID]);
 
-    return static_cast<tcomponent&>(ComponentPool->Data[EntityID]);
+    return ComponentPool->Get(EntityID);
 }
 
 template<typename tsystem, typename ...targs> 

@@ -25,6 +25,33 @@ struct body_component
     }
 };
 
+struct text_component
+{
+    v2 Position;
+    std::string Text;
+    std::string AssetID;
+    v4 Color;
+    b32 IsFixed;
+
+    text_component(std::string AssetID_ = "", std::string Text_ = "", v2 Position_ = V2(0, 0), v4 Color_ = V4(0), b32 IsFixed_ = false)
+    {
+        Position = Position_;
+        Text = Text_;
+        AssetID = AssetID_;
+        Color = Color_;
+        IsFixed = IsFixed_;
+    }
+};
+
+struct health_component
+{
+    i32 HealthPercentage;
+    health_component(i32 HealthPercentage_ = 100)
+    {
+        HealthPercentage = HealthPercentage_;
+    }
+};
+
 struct projectile_emitter_component
 {
     v2  Velocity;

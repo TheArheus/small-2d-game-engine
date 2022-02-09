@@ -272,7 +272,7 @@ void DrawRect(texture_t* RenderBuffer, v2 Min, v2 Max, u32 color)
     }
 }
 
-static void
+internal void
 CirclePoints(texture_t* Texture, v2 C, v2 P, u32 Color)
 {
     DrawPixel(Texture, (u32)( P.x + C.x), (u32)( P.y + C.y), Color);
@@ -286,7 +286,7 @@ CirclePoints(texture_t* Texture, v2 C, v2 P, u32 Color)
     DrawPixel(Texture, (u32)(-P.y + C.x), (u32)( P.x + C.y), Color);
 }
 
-static void
+internal void
 CircleLinePoints(texture_t* Texture, v2 C, v2 P, u32 Color)
 {
     DrawLine(Texture, V2(C.x + P.x, C.y + P.y), V2(C.x - P.x, C.y + P.y), Color);
@@ -372,8 +372,42 @@ DrawFilledCircle(v2 P, u32 Width, u32 Height, r32 Radius, u32 Color)
     DrawRotRect(ColorBuffer, P, XAxis, YAxis, Color, &BallTexture);
 }
 
+internal texture_t*
+FromGlyphToTexture(glyph_t* Glyph)
+{
+    texture_t* Result = (texture_t*)malloc(sizeof(texture_t));
+
+    Result->Width = Glyph->Width;
+    Result->Height = Glyph->Height;
+    Result->Memory = Glyph->Memory;
+
+    return Result;
+}
+
 void
-DrawPolygon(v2 P, std::vector<v2> Vertices, u32 Color)
+PutText(v2 P, std::string Text, font_t* Font, v4 Color)
+{
+    u32 PutOffset = 0;
+    for(u32 CharIndex = 0;
+        CharIndex < Text.size();
+        ++CharIndex)
+    {
+        u8 Char = Text.c_str()[CharIndex];
+        glyph_t* CharacterFont = Font->at(Char);
+        texture_t* TextureToRender = FromGlyphToTexture(CharacterFont);
+
+        v2 StartPoint = P + V2(PutOffset, CharacterFont->OffsetY);
+        v2 Width  = V2(CharacterFont->Width, 0);
+        v2 Height = V2(0, CharacterFont->Height);
+        DrawRotRect(ColorBuffer, StartPoint, Width, Height, PackBGRA(Color), TextureToRender);
+        PutOffset += (CharacterFont->Width != 0) ? (CharacterFont->Width + 2) : (CharacterFont->FontSize / 2);
+
+        free(TextureToRender);
+    }
+}
+
+void
+DrawPolygon(texture_t* RenderBuffer, v2 P, std::vector<v2> Vertices, u32 Color)
 {
     for(u32 PIndex = 0;
         PIndex < Vertices.size();
@@ -381,7 +415,7 @@ DrawPolygon(v2 P, std::vector<v2> Vertices, u32 Color)
     {
         i32 CurrIndex = PIndex;
         i32 NextIndex = (PIndex + 1) % Vertices.size();
-        DrawLine(ColorBuffer, Vertices[CurrIndex], Vertices[NextIndex], Color);
+        DrawLine(RenderBuffer, Vertices[CurrIndex], Vertices[NextIndex], Color);
     }
 }
 

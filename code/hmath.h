@@ -1142,11 +1142,18 @@ Hadamard(v4 A, v4 B)
     return Result;
 }
 
-struct rectangle2
+inline v4
+Lerp(v4 A, r32 t, v4 B)
 {
-    v2 Min;
-    v2 Max;
-};
+    v4 Result;
+
+    Result.x = Lerp(A.x, t, B.x);
+    Result.y = Lerp(A.y, t, B.y);
+    Result.z = Lerp(A.z, t, B.z);
+    Result.w = Lerp(A.w, t, B.w);
+
+    return Result;
+}
 
 // Operators Vector size N
 
@@ -1565,42 +1572,106 @@ LinearTo255SRGB(v4 A)
     return Result;
 }
 
-#if 0
-internal void 
-FromRGBAToARGB(texture_t* Texture)
+struct rectangle2
 {
-    for(u32 Height = 0;
-        Height < Texture->Height;
-        ++Height)
-    {
-        for(u32 Width = 0;
-            Width < Texture->Width;
-            ++Width)
-        {
-            u32 ColorToConvert = Texture->Memory[sizeof(u32) * Height + Width];
-            u32 NewColor = PackARGB(UnpackRGBA(ColorToConvert));
-            Texture->Memory[sizeof(u32) * Height + Width] = NewColor;
-        }
-    }
+    v2 Min;
+    v2 Max;
+};
+
+internal v2
+GetDim(rectangle2 A)
+{
+    v2 Result = A.Max - A.Min;
+
+    return Result;
 }
 
-internal void 
-FromARGBToRGBA(texture_t* Texture)
+internal v2
+GetCenter(rectangle2 A)
 {
-    for(u32 Height = 0;
-        Height < Texture->Height;
-        ++Height)
-    {
-        for(u32 Width = 0;
-            Width < Texture->Width;
-            ++Width)
-        {
-            u32 ColorToConvert = Texture->Memory[sizeof(u32)*Height + Width];
-            u32 NewColor = PackRGBA(UnpackARGB(ColorToConvert));
-            Texture->Memory[sizeof(u32) * Height + Width] = NewColor;
-        }
-    }
+    v2 Result = 0.5f*(A.Max + A.Min);
+
+    return Result;
 }
-#endif
+
+internal v2
+GetHalfDim(rectangle2 A)
+{
+    v2 Result = 0.5f * GetDim(A);
+
+    return Result;
+}
+
+internal rectangle2
+RectangleMinMax(v2 Min, v2 Max)
+{
+    rectangle2 Result;
+
+    Result.Min = Min;
+    Result.Max = Max;
+
+    return Result;
+}
+
+internal rectangle2
+RectangleMinDim(v2 Min, v2 Dims)
+{
+    rectangle2 Result;
+
+    Result.Min = Min;
+    Result.Max = Min + Dims;
+
+    return Result;
+}
+
+internal rectangle2
+RectangleCenterHalfDim(v2 Center, v2 HalfDim)
+{
+    rectangle2 Result;
+
+    Result.Min = Center - HalfDim;
+    Result.Max = Center + HalfDim;
+
+    return Result;
+}
+
+internal rectangle2
+RectangleAddRadius(rectangle2 A, v2 Radius)
+{
+    rectangle2 Result;
+
+    Result.Min = A.Min - Radius;
+    Result.Max = A.Max + Radius;
+
+    return Result;
+}
+
+internal rectangle2
+RectangleDisplace(rectangle2 A, v2 P)
+{
+    rectangle2 Result;
+
+    Result.Min += P;
+    Result.Max += P;
+
+    return Result;
+}
+
+internal rectangle2
+RectangleCenterDim(v2 Center, v2 Dims)
+{
+    rectangle2 Result = RectangleCenterHalfDim(Center, 0.5f*Dims);
+    return Result;
+}
+
+internal b32
+IsInRectangle(rectangle2 A, v2 Point)
+{
+    b32 Result = ((Point.x >= A.Min.x) && 
+                  (Point.y >= A.Min.y) &&
+                  (Point.x <  A.Max.x) &&
+                  (Point.y <  A.Max.y));
+    return Result;
+}
 
 #endif

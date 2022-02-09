@@ -52,21 +52,91 @@ public:
     template<typename T> void RequireComponent();
 };
 
-struct pool_{};
+struct pool_
+{
+    virtual ~pool_() = default;
+    virtual void RemoveEntityFromPool(i32 EntityID) = 0;
+};
 
-template<typename T>
+template<typename tobject>
 struct pool : pool_
 {
-    std::vector<T> Data;
+    i32 Size;
+    std::vector<tobject> Data;
 
-    pool(i32 Size = 100)
+    std::unordered_map<i32, i32> EntityIdToIndex;
+    std::unordered_map<i32, i32> IndexToEntityId;
+
+    pool(i32 Capacity = 100)
     {
-        Data.resize(Size);
+        Size = 0;
+        Data.resize(Capacity);
     }
 
     ~pool() = default;
 
-    T& operator[](u32 Index)
+    void Clear()
+    {
+        Data.clear();
+        EntityIdToIndex.clear();
+        IndexToEntityId.clear();
+        Size = 0;
+    }
+
+    void Set(tobject Object, i32 EntityID)
+    {
+        if(EntityIdToIndex.find(EntityID) != EntityIdToIndex.end())
+        {
+            i32 Index = EntityIdToIndex[EntityID];
+            Data[Index] = Object;
+        }
+        else
+        {
+            i32 Index = Size;
+            EntityIdToIndex.emplace(EntityID, Index);
+            IndexToEntityId.emplace(Index, EntityID);
+
+            if(Index >= Data.capacity())
+            {
+                Data.resize(Size * 2);
+            }
+
+            Data[Index] = Object;
+            Size++;
+        }
+    }
+
+    void Remove(i32 EntityID)
+    {
+        i32 IndexOfRemoved = EntityIdToIndex[EntityID];
+        i32 IndexOfLast = Size - 1;
+        Data[IndexOfRemoved] = Data[IndexOfLast];
+
+        i32 EntityIdOfLastElement = IndexToEntityId[IndexOfLast];
+        EntityIdToIndex[EntityIdOfLastElement] = IndexOfRemoved;
+        IndexToEntityId[IndexOfRemoved] = EntityIdOfLastElement;
+
+        EntityIdToIndex.erase(EntityID);
+        IndexToEntityId.erase(IndexOfLast);
+
+        Size--;
+    }
+
+    void RemoveEntityFromPool(i32 EntityID) override
+    {
+        if(EntityIdToIndex.find(EntityID) != EntityIdToIndex.end())
+        {
+            Remove(EntityID);
+        }
+    }
+
+    tobject& Get(i32 EntityID)
+    {
+        i32 Index = EntityIdToIndex[EntityID];
+        return static_cast<tobject&>(Data[Index]);
+    }
+
+    tobject& operator[](u32 Index)
     {
         return Data[Index];
     }
@@ -82,6 +152,12 @@ private:
     std::set<entity> ColdEntities;
     std::deque<i32> FreedIDs;
 
+    std::unordered_map<std::string, entity> EntityPerTag;
+    std::unordered_map<i32, std::string> TagPerEntity;
+
+    std::unordered_map<std::string, std::set<entity>> EntitiesPerGroup;
+    std::unordered_map<i32, std::string> GroupPerEntity;
+
     std::vector<std::shared_ptr<pool_>> ComponentsPool;
     std::vector<signature> EntityComponentSignature;
 
@@ -94,6 +170,16 @@ public:
     void AddEntityToSystems(entity Entity);
     void RemoveEntityFromSystems(entity Entity);
     void KillEntity(entity Entity);
+
+    void TagEntity(entity Entity, const std::string& Tag);
+    b32 EntityHasTag(entity Entity, const std::string& Tag) const;
+    entity GetEntityByTag(const std::string& Tag) const;
+    void RemoveEntityTag(entity Entity);
+
+    void GroupEntity(entity Entity, const std::string& Group);
+    b32 EntityBelongsToGroup(entity Entity, const std::string& Group) const;
+    std::vector<entity> GetEntitiesByGroup(const std::string& Group) const;
+    void RemoveEntityGroup(entity Entity);
 
     template<typename tcomponent, typename ...targs> void AddComponent(entity Entity, targs&& ...Args);
     template<typename tcomponent> void RemoveComponent(entity Entity);

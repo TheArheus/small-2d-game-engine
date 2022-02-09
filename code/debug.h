@@ -1,6 +1,10 @@
+#include <sstream>
+#include <iomanip>
+#include <ctime>
 #include <stdlib.h>
 #include <stdio.h>
 #include <string>
+#include <string.h>
 
 enum MessageType
 {
@@ -8,9 +12,11 @@ enum MessageType
     MessageType_Error,
 };
 
+#define TimeStamp() ({time_t retval;retval=time(NULL);auto retval=asctime(localtime(&TimeStamp));retval;})
+
 #define CreateMessage___(String, MessageType, Line) logger Log_##MessageType_##Line(String, sizeof(String), MessageType);
-#define CreateMessage__(Time, Line, FunctionName, String, MessageType) CreateMessage___(FunctionName ##"(line: "#Line ##") - " ##Time ##" - " ##String, MessageType, Line)
-#define CreateMessage_(String, MessageType, Line) CreateMessage__(__TIME__, Line, __FUNCTION__, String, MessageType)
+#define CreateMessage__(Line, FunctionName, String, MessageType) CreateMessage___(FunctionName ##"(line: "#Line ##") - " ##String, MessageType, Line)
+#define CreateMessage_(String, MessageType, Line) CreateMessage__(Line, __FUNCTION__, String, MessageType)
 #define CreateMessage(String, MessageType) CreateMessage_(String, MessageType, __LINE__)
 
 #define MessageLog(String) CreateMessage(String, MessageType_Message);
@@ -19,28 +25,50 @@ enum MessageType
 struct logger
 {
     const char* Message;
-    int MessageSize;
-    int MessageLine;
-    char* FunctionName;
+    int MessageSize = 0;
+
     MessageType Type;
+
+    int MessageLine;
 
     logger(const char* Message_, int MessageSize_, MessageType Type_)
     {
-        Message = Message_;
-        MessageSize = MessageSize_;
         Type = Type_;
+
+        auto Time = std::time(NULL);
+        auto TimeStamp = *std::localtime(&Time);
+        std::ostringstream oss;
+        oss << std::put_time(&TimeStamp, "%Hh %Mm %Ss - ");
+        std::string OutTime = oss.str();
+
+        char NewMessage[256] = {};
+        strncat(NewMessage, OutTime.c_str(), OutTime.size());
+        MessageSize += int(OutTime.size());
+        strcat(NewMessage, Message_);
+        MessageSize += int(MessageSize_ - 1);
+        strcat(NewMessage, "\0");
+        MessageSize += 1;
+        Message = NewMessage;
     }
 
     logger(std::string Message_, int MessageSize_, MessageType Type_)
     {
-        Message = Message_.c_str();
-        MessageSize = int(Message_.size()) + 1;
         Type = Type_;
+
+        auto Time = std::time(NULL);
+        auto TimeStamp = *std::localtime(&Time);
+        std::ostringstream oss;
+        oss << std::put_time(&TimeStamp, "%Hh %Mm %Ss - ");
+        std::string Out = oss.str();
+
+        Out += Message_;
+        Message = Out.c_str();
+        MessageSize = Out.size() + 1;
     }
 
     ~logger()
     {
-        char Buffer[512];
+        char Buffer[256] = {};
         snprintf(Buffer, MessageSize, Message);
 
         switch(Type)

@@ -7,9 +7,12 @@
 #include <bitset>
 #include <unordered_map>
 #include <set>
+#include <map>
 #include <typeindex>
 #include <typeinfo>
 #include <map>
+#include <deque>
+#include "debug.h"
 
 typedef uint8_t     u8;
 typedef uint16_t    u16;

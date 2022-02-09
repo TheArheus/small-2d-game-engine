@@ -7,7 +7,7 @@ REM call vcvarsall x64
 set LIB_VCPKG="F:\Env\vcpkg\installed\x64-windows\lib"
 set INC_VCPKG="F:\Env\vcpkg\installed\x64-windows\include"
 
-set CommonCompileFlags=-MT -nologo -fp:fast -EHa -O2 -WX- -W4 -Oi -GR- -Gm- -GS -wd4100 -wd4201 -wd4505 -FC -Z7 -I %INC_VCPKG%
+set CommonCompileFlags=-MT -nologo -fp:fast -EHa -Od -WX- -W4 -Oi -GR- -Gm- -GS -wd4100 -wd4201 -wd4505 -FC -Z7 -I %INC_VCPKG%
 set CommonLinkFlags=-opt:ref -incremental:no /NODEFAULTLIB:msvcrt /SUBSYSTEM:CONSOLE /LIBPATH:%LIB_VCPKG%  
 
 if not exist ..\build mkdir ..\build
