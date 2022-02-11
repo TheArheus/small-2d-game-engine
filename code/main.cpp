@@ -6,11 +6,19 @@
 #include <windows.h>
 #include <stdbool.h>
 #include <SDL2/SDL.h>
+#include "imgui.h"
+#include "imgui_impl_sdl.h"
+#include "imgui_impl_sdlrenderer.h"
 #include "display.h"
 #include "events.h"
+
+bool IsDebug = false;
+
 #include "systems.h"
 #include "entity_system.cpp"
 #include "asset_store.cpp"
+
+#undef main
 
 bool is_running;
 
@@ -110,8 +118,9 @@ LoadTileMap(game_level* Level, std::string TileMapPath, r32 TileScale, i32* MapW
             u32 SourceRectX = std::atoi(&Character) * TileSize;
             MapFile.ignore();
 
-            entity Tile = Level->Registry->CreateEntity();
             v3 EntityPos = V3(X * (TileSize * TileScale), Y * (TileSize * TileScale), 1);// + V3(Camera.P, 0.0f);
+            entity Tile = Level->Registry->CreateEntity();
+            Level->Registry->GroupEntity(Tile, "tile");
             Level->Registry->AddComponent<transformation_compontent>(Tile, EntityPos, V2(TileScale, TileScale), 0.0f);
             Level->Registry->AddComponent<sprite_component>(Tile, "tilemap_image", TileSize, TileSize, false, SourceRectX, SourceRectY);
         }
@@ -133,7 +142,9 @@ LoadLevel(i32 Level, std::string LevelFile, std::string LevelTexture, r32 TileSc
     NewLevel.Registry->AddSystem<damage_system>();
     NewLevel.Registry->AddSystem<movement_system>();
     NewLevel.Registry->AddSystem<rendering_system>();
+    NewLevel.Registry->AddSystem<rendering_health_system>();
     NewLevel.Registry->AddSystem<rendering_text_system>();
+    NewLevel.Registry->AddSystem<rendering_debug_ui_system>();
     NewLevel.Registry->AddSystem<animation_system>();
     NewLevel.Registry->AddSystem<collision_system>();
     NewLevel.Registry->AddSystem<keyboard_control_system>();
@@ -149,9 +160,10 @@ LoadLevel(i32 Level, std::string LevelFile, std::string LevelTexture, r32 TileSc
 
     NewLevel.AssetStore->AddFont("font_arial", "C:/Windows/Fonts/arial.ttf", 18);
 
-#if 0
+#if 1
     LoadTileMap(&NewLevel, LevelFile, TileScale, &NewLevel.MapWidth, &NewLevel.MapHeight);
 #else
+    // This one only for easier debugging
     NewLevel.MapWidth  = 25 * 32 * TileScale;
     NewLevel.MapHeight = 20 * 32 * TileScale;
 #endif
@@ -181,7 +193,7 @@ LoadLevel(i32 Level, std::string LevelFile, std::string LevelTexture, r32 TileSc
     NewLevel.Registry->AddComponent<sprite_component>(Tank, "tank_image", 32, 32);
     NewLevel.Registry->AddComponent<collision_box_component>(Tank, V2(32, 32));
     NewLevel.Registry->AddComponent<projectile_emitter_component>(Tank, V2(0, -100), 2000, 5000, 5, false);
-    NewLevel.Registry->AddComponent<health_component>(Tank, 5);
+    NewLevel.Registry->AddComponent<health_component>(Tank, 100);
 
     return NewLevel;
 }
@@ -225,6 +237,14 @@ process_input(game_world* World)
 {
     SDL_Event event;
     SDL_PollEvent(&event);
+    ImGui_ImplSDL2_ProcessEvent(&event);
+
+    ImGuiIO& io = ImGui::GetIO();
+    int MouseX, MouseY;
+    const i32 Buttons = SDL_GetMouseState(&MouseX, &MouseY);
+    io.MousePos = ImVec2(MouseX, MouseY);
+    io.MouseDown[0] = Buttons & SDL_BUTTON(SDL_BUTTON_LEFT);
+    io.MouseDown[1] = Buttons & SDL_BUTTON(SDL_BUTTON_RIGHT);
 
     switch(event.type)
     {
@@ -233,6 +253,7 @@ process_input(game_world* World)
             break;
         case SDL_KEYDOWN:
             if(event.key.keysym.sym == SDLK_ESCAPE) is_running = false;
+            if(event.key.keysym.sym == SDLK_r) IsDebug = !IsDebug;
             World->Levels[World->ChosenLevel].EventBus->EmitEvent<key_pressed_event>(event.key.keysym.sym);
             break;
         case SDL_KEYUP:
@@ -262,7 +283,7 @@ update(game_world* World)
     World->Levels[World->ChosenLevel].Registry->GetSystem<keyboard_control_system>().SubscribeToEvent(World->Levels[World->ChosenLevel].EventBus);
     World->Levels[World->ChosenLevel].Registry->GetSystem<projectile_emit_system>().SubscribeToEvent(World->Levels[World->ChosenLevel].EventBus);
 
-    World->Levels[World->ChosenLevel].Registry->GetSystem<movement_system>().Update(DeltaTime);
+    World->Levels[World->ChosenLevel].Registry->GetSystem<movement_system>().Update(DeltaTime, World->Levels[World->ChosenLevel].MapWidth, World->Levels[World->ChosenLevel].MapHeight);
     World->Levels[World->ChosenLevel].Registry->Update();
     World->Levels[World->ChosenLevel].Registry->GetSystem<collision_system>().Update(World->Levels[World->ChosenLevel].EventBus);
     World->Levels[World->ChosenLevel].Registry->GetSystem<projectile_emit_system>().Update(World->Levels[World->ChosenLevel].Registry);
@@ -277,8 +298,14 @@ render(game_world* World)
     ClearColorBuffer(ColorBuffer, 0xFF16161d);//0xFF056263);
 
     World->Levels[World->ChosenLevel].Registry->GetSystem<rendering_system>().Render(World->Levels[World->ChosenLevel].Registry, World->Levels[World->ChosenLevel].AssetStore, &Camera);
+    World->Levels[World->ChosenLevel].Registry->GetSystem<rendering_health_system>().Render(World->Levels[World->ChosenLevel].AssetStore, &Camera);
     World->Levels[World->ChosenLevel].Registry->GetSystem<rendering_text_system>().Render(World->Levels[World->ChosenLevel].AssetStore, &Camera);
     World->Levels[World->ChosenLevel].Registry->GetSystem<animation_system>().Animate();
+
+    if(IsDebug)
+    {
+        World->Levels[World->ChosenLevel].Registry->GetSystem<rendering_debug_ui_system>().Render(World->Levels[World->ChosenLevel].Registry);
+    }
 
     SDL_RenderPresent(renderer);
 }

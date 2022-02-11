@@ -9,7 +9,46 @@ public:
         RequireComponent<body_component>();
     }
 
-    void Update(r32 DeltaTime)
+    void SubscribeToEvent(std::unique_ptr<event_bus>& EventBus)
+    {
+        EventBus->SubscribeToEvent<collision_event>(this, &movement_system::OnCollision);
+    }
+
+    void OnCollision(collision_event& Event)
+    {
+        entity A = Event.A;
+        entity B = Event.B;
+
+        if(A.Registry->EntityBelongsToGroup(A, "obstacle") && B.Registry->EntityBelongsToGroup(B, "enemies"))
+        {
+            OnProjectileHitsEnemy(A, B);
+        }
+
+        if(B.Registry->EntityBelongsToGroup(B, "obstacle") && A.Registry->EntityBelongsToGroup(A, "enemies"))
+        {
+            OnProjectileHitsEnemy(B, A);
+        }
+    }
+
+    void OnProjectileHitsEnemy(entity Obstacle, entity Enemy)
+    {
+        if(Enemy.Registry->HasComponent<body_component>(Enemy) && Enemy.Registry->HasComponent<sprite_component>(Enemy))
+        {
+            body_component& Movement = Enemy.Registry->GetComponent<body_component>(Enemy);
+
+            if(Movement.Velocity.x != 0)
+            {
+                Movement.Velocity.x *= -1;
+            }
+
+            if(Movement.Velocity.y != 0)
+            {
+                Movement.Velocity.y *= -1;
+            }
+        }
+    }
+
+    void Update(r32 DeltaTime, i32 MapWidth, i32 MapHeight)
     {
         for(entity& Entity : Entities)
         {
@@ -17,6 +56,24 @@ public:
             body_component& Movement = Entity.Registry->GetComponent<body_component>(Entity);
 
             Transform.Position += V3(Movement.Velocity * DeltaTime, 0.0f);
+
+            if(Entity.Registry->EntityHasTag(Entity, "player"))
+            {
+                Transform.Position.x = Transform.Position.x < 10 ? 10 : Transform.Position.x;
+                Transform.Position.y = Transform.Position.y < 10 ? 10 : Transform.Position.y;
+                Transform.Position.x = Transform.Position.x > (MapWidth  - 50) ? (MapWidth  - 50) : Transform.Position.x;
+                Transform.Position.y = Transform.Position.y > (MapHeight - 50) ? (MapHeight - 50) : Transform.Position.y;
+            }
+
+            b32 IsOutsideMap = 
+                (Transform.Position.x < 0 ||
+                 Transform.Position.y < 0 ||
+                 Transform.Position.x > MapWidth ||
+                 Transform.Position.y > MapHeight);
+            if(IsOutsideMap && !Entity.Registry->EntityHasTag(Entity, "player"))
+            {
+                Entity.Registry->KillEntity(Entity);
+            }
         }
     }
 };
@@ -63,11 +120,8 @@ struct sortable_entities
 {
     transformation_compontent Transform;
     sprite_component Sprite;
-    health_component Health;
 };
 
-// TODO: Have to fix the bug with 
-// the projectiles not being rendered
 class rendering_system : public entity_system
 {
 public:
@@ -75,7 +129,6 @@ public:
     {
         RequireComponent<transformation_compontent>();
         RequireComponent<sprite_component>();
-        RequireComponent<health_component>();
     }
 
     void Render(std::unique_ptr<registry>& Registry, std::unique_ptr<asset_store>& AssetStore, camera* Camera)
@@ -83,11 +136,14 @@ public:
         std::vector<sortable_entities> SortedEntities;
         for(entity Entity: Entities)
         {
+            if(Entity.Registry->EntityBelongsToGroup(Entity, "tile") && IsDebug)
+            {
+                continue;
+            }
             sortable_entities SortableEntity;
 
             SortableEntity.Transform = Entity.Registry->GetComponent<transformation_compontent>(Entity);
             SortableEntity.Sprite = Entity.Registry->GetComponent<sprite_component>(Entity);
-            SortableEntity.Health = Entity.Registry->GetComponent<health_component>(Entity);
 
             SortedEntities.emplace_back(SortableEntity);
         }
@@ -98,7 +154,6 @@ public:
         {
             transformation_compontent Transform = Entity.Transform;
             sprite_component Sprite = Entity.Sprite;
-            health_component Health = Entity.Health;
 
             texture_t* Texture = AssetStore->GetTexture(Sprite.AssetID);
             texture_t* SlicedTexture = GetShiftedTexture(Texture, Sprite.SpritePos, Sprite.Dims);
@@ -107,19 +162,42 @@ public:
             v2 TextureWidth  = rotate(Transform.Scale*Sprite.Dims.x*V2(1, 0), Transform.Rotation);
             v2 TextureHeight = rotate(Transform.Scale*Sprite.Dims.y*V2(0, 1), Transform.Rotation);
 
-            //if(IsInRectangle(Camera->Area, DrawPoint))
+            if(IsInRectangle(RectangleAddMin(Camera->Area, -Transform.Scale*Sprite.Dims), DrawPoint) && !Sprite.IsFixed)
             {
                 DrawRotRect(ColorBuffer, DrawPoint, TextureWidth, TextureHeight, 0xFFFFFFFF, SlicedTexture);
             }
-
-            v4 Color = Lerp(V4(255, 0, 0, 255), Health.HealthPercentage / 100.0f, V4(0, 255, 0, 255));
-            PutText(DrawPoint + V2(TextureWidth.x/2, TextureHeight.y/2 - 25), std::to_string(Health.HealthPercentage) + "%", &AssetStore->GetFont("font_arial"), Color);
         
             free(SlicedTexture);
             free(SlicedTexture->Memory);
         }
 
         SortedEntities.clear();
+    }
+};
+
+class rendering_health_system : public entity_system
+{
+public:
+    rendering_health_system()
+    {
+        RequireComponent<transformation_compontent>();
+        RequireComponent<sprite_component>();
+        RequireComponent<health_component>();
+    }
+
+    void Render(std::unique_ptr<asset_store>& AssetStore, camera* Camera)
+    {
+        for(entity Entity : Entities)
+        {
+            transformation_compontent Transform = Entity.Registry->GetComponent<transformation_compontent>(Entity);
+            sprite_component Sprite = Entity.Registry->GetComponent<sprite_component>(Entity);
+            health_component Health = Entity.Registry->GetComponent<health_component>(Entity);
+
+            v2 DrawPoint = Transform.Position.xy - (!Sprite.IsFixed)*Camera->P;
+
+            v4 Color = Lerp(V4(255, 0, 0, 255), Health.HealthPercentage / 100.0f, V4(0, 255, 0, 255));
+            PutText(DrawPoint + V2(Sprite.Dims.x/2, Sprite.Dims.y/2 - 25), std::to_string(Health.HealthPercentage) + "%", &AssetStore->GetFont("font_arial"), Color);
+        }
     }
 };
 
@@ -141,6 +219,101 @@ public:
             v2 DrawPoint = Text.Position - (!Text.IsFixed)*Camera->P;
             PutText(DrawPoint, Text.Text, &Font, Text.Color);
         }
+    }
+};
+
+class rendering_debug_ui_system : public entity_system
+{
+public:
+    rendering_debug_ui_system() = default;
+
+    void Render(std::unique_ptr<registry>& Registry)
+    {
+        ImGui_ImplSDLRenderer_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+
+        global_persist i32 EnemyX = 0;
+        global_persist i32 EnemyY = 0;
+        global_persist i32 EnemyZ = 4;
+
+        global_persist i32 ScaleX = 1;
+        global_persist i32 ScaleY = 1;
+
+        global_persist r32 Angle  = 0;
+
+        global_persist i32 VelocityX = 0;
+        global_persist i32 VelocityY = 0;
+
+        global_persist i32 Health = 100;
+
+        global_persist r32 ProjVel    = 100;
+        global_persist r32 ProjAngle  = 100;
+        global_persist i32 ProjRepeat = 10;
+        global_persist i32 ProjDurat  = 10;
+
+        global_persist i32 SelectedSprite = 0;
+        const char* Sprites[] = {"tank_image", "truck_image"};
+
+        if(ImGui::Begin("Spawn enemies"))
+        {
+            if(ImGui::CollapsingHeader("Sprite", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::Combo("Texture ID", &SelectedSprite, Sprites, IM_ARRAYSIZE(Sprites));
+            }
+            ImGui::Spacing();
+            if(ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::InputInt("Enemy Pos X", &EnemyX);
+                ImGui::InputInt("Enemy Pos Y", &EnemyY);
+                ImGui::InputInt("Enemy Pos Z", &EnemyZ);
+
+                ImGui::SliderInt("Scale X", &ScaleX, 1, 10);
+                ImGui::SliderInt("Scale Y", &ScaleY, 1, 10);
+
+                ImGui::SliderAngle("Rotation (Degrees)", &Angle, 0, 360);
+            }
+            ImGui::Spacing();
+            if(ImGui::CollapsingHeader("Body speed", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::InputInt("Velocity X", &VelocityX);
+                ImGui::InputInt("Velocity Y", &VelocityY);
+            }
+            ImGui::Spacing();
+            if(ImGui::CollapsingHeader("Projectile emitter", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::SliderAngle("Projectile Angle", &ProjAngle, 0, 360);
+                ImGui::SliderFloat("Projectile Speed (px/sec)", &ProjVel, 10, 500);
+
+                ImGui::InputInt("Emitting Repetition (Sec)", &ProjRepeat);
+                ImGui::InputInt("Emitting Duration (Sec)", &ProjDurat);
+            }
+            ImGui::Spacing();
+            if(ImGui::CollapsingHeader("ProjectileHealth", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                ImGui::SliderInt("Entity Health", &Health, 5, 100);
+            }
+            ImGui::Spacing();
+            ImGui::Separator();
+            ImGui::Spacing();
+
+            if(ImGui::Button("Spawn Enemy Entity"))
+            {
+                entity Enemy = Registry->CreateEntity();
+                Enemy.Registry->GroupEntity(Enemy, "enemies");
+                Registry->AddComponent<transformation_compontent>(Enemy, V3(EnemyX, EnemyY, EnemyZ), V2(ScaleX, ScaleY), Angle);
+                Registry->AddComponent<body_component>(Enemy, V2(VelocityX, VelocityY));
+                Registry->AddComponent<sprite_component>(Enemy, Sprites[SelectedSprite], 32, 32);
+                Registry->AddComponent<collision_box_component>(Enemy, V2(32, 32));
+                Registry->AddComponent<projectile_emitter_component>(Enemy, V2(cosf(ProjAngle) * ProjVel, sinf(ProjAngle) * ProjVel), ProjRepeat * 1000, ProjDurat * 1000, 5, false);
+                Registry->AddComponent<health_component>(Enemy, Health);
+            }
+        }
+        ImGui::End();
+
+        ImGui::Render();
+
+        ImGui_ImplSDLRenderer_RenderDrawData(ImGui::GetDrawData());
     }
 };
 
@@ -407,7 +580,6 @@ public:
     void SubscribeToEvent(std::unique_ptr<event_bus>& EventBus)
     {
         EventBus->SubscribeToEvent<key_pressed_event>(this, &projectile_emit_system::OnKeyPressed);
-        EventBus->SubscribeToEvent<key_up_event>(this, &projectile_emit_system::OnKeyReleased);
     }
 
     void OnKeyPressed(key_pressed_event& Event)
@@ -447,14 +619,6 @@ public:
                 }
             }
         }
-    }
-    
-    void OnKeyReleased(key_up_event& Event)
-    {
-        // TODO: Have to make this to stop creating new entities
-        // while pushing "space" key, as OnKeyPressed function
-        // just creates bunch of the new projectiles
-        // instead of creating one entity once space key pressed
     }
 
     void Update(std::unique_ptr<registry>& Registry)

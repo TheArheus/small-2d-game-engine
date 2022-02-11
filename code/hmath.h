@@ -1647,6 +1647,28 @@ RectangleAddRadius(rectangle2 A, v2 Radius)
 }
 
 internal rectangle2
+RectangleAddMin(rectangle2 A, v2 V)
+{
+    rectangle2 Result;
+
+    Result.Min = A.Min + V;
+    Result.Max = A.Max;
+
+    return Result;
+}
+
+internal rectangle2
+RectangleAddMax(rectangle2 A, v2 V)
+{
+    rectangle2 Result;
+
+    Result.Min = A.Min;
+    Result.Max = A.Max + V;
+
+    return Result;
+}
+
+internal rectangle2
 RectangleDisplace(rectangle2 A, v2 P)
 {
     rectangle2 Result;

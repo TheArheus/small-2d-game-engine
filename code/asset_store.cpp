@@ -102,8 +102,8 @@ CreateFontChar(stbtt_fontinfo* Font, i32 FontSize, u32 CodePoint)
 void asset_store::
 AddFont(const std::string AssetID, const std::string& FilePath, i32 FontSize)
 {
-    u32 ContentSize;
-    void* Content;
+    u32 ContentSize = 0;
+    void* Content = nullptr;
 
     FILE* In = fopen(FilePath.c_str(), "rb");
     if(In)
@@ -121,20 +121,23 @@ AddFont(const std::string AssetID, const std::string& FilePath, i32 FontSize)
         MessageErr("Could not read specified file");
     }
 
-    stbtt_fontinfo Font;
-    stbtt_InitFont(&Font, (u8*)Content, stbtt_GetFontOffsetForIndex((u8*)Content, 0));
-
-    font_t Result;
-
-    Result.emplace(' ', CreateFontChar(&Font, FontSize, ' '));
-    for(u32 Character = '!';
-        Character <= '~';
-        ++Character)
+    if(Content)
     {
-        Result.emplace(Character, CreateFontChar(&Font, FontSize, Character));
-    }
+        stbtt_fontinfo Font;
+        stbtt_InitFont(&Font, (u8*)Content, stbtt_GetFontOffsetForIndex((u8*)Content, 0));
 
-    Fonts.emplace(AssetID, Result);
+        font_t Result;
+
+        Result.emplace(' ', CreateFontChar(&Font, FontSize, ' '));
+        for(u32 Character = '!';
+            Character <= '~';
+            ++Character)
+        {
+            Result.emplace(Character, CreateFontChar(&Font, FontSize, Character));
+        }
+
+        Fonts.emplace(AssetID, Result);
+    }
 }
 
 font_t asset_store::

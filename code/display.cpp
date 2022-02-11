@@ -31,12 +31,17 @@ bool InitWindow(void)
         return false;
     }
 
-    renderer = SDL_CreateRenderer(window, -1, NULL);
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC | SDL_RENDERER_ACCELERATED);
     if(!renderer)
     {
         fprintf(stderr, "Error: creating SDL renderer");
         return false;
     }
+
+    ImGui::CreateContext();
+
+    ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
+    ImGui_ImplSDLRenderer_Init(renderer);
 
     //SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN);
 
@@ -407,7 +412,7 @@ PutText(v2 P, std::string Text, font_t* Font, v4 Color)
 }
 
 void
-DrawPolygon(texture_t* RenderBuffer, v2 P, std::vector<v2> Vertices, u32 Color)
+DrawPolygon(v2 P, std::vector<v2> Vertices, u32 Color)
 {
     for(u32 PIndex = 0;
         PIndex < Vertices.size();
@@ -415,7 +420,7 @@ DrawPolygon(texture_t* RenderBuffer, v2 P, std::vector<v2> Vertices, u32 Color)
     {
         i32 CurrIndex = PIndex;
         i32 NextIndex = (PIndex + 1) % Vertices.size();
-        DrawLine(RenderBuffer, Vertices[CurrIndex], Vertices[NextIndex], Color);
+        DrawLine(ColorBuffer, Vertices[CurrIndex], Vertices[NextIndex], Color);
     }
 }
 
@@ -427,6 +432,9 @@ void DestroyTexture(texture_t* Texture)
 
 void DestroyWindow(void)
 {
+    ImGui_ImplSDL2_Shutdown();
+    ImGui::DestroyContext();
+
     DestroyTexture(ColorBuffer);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

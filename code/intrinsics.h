@@ -29,7 +29,7 @@ typedef double      r64;
 typedef uint32_t    b32;
 
 #define internal static
-#define global_variable static
+#define global_persist static
 
 #define FPS 60
 #define FRAME_TARGET_TIME (1000/FPS)
